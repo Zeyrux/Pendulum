@@ -4,10 +4,10 @@ import os
 import gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.callbacks import BaseCallback
 
-EPISODES = 10
-TOTAL_TIMESTEPS = 2000000
+EPISODES = 20
+TOTAL_TIMESTEPS = 1000000
 LOG_PATH = "Logs"
 MODEL_PATH = os.path.join("Model", "model.zip")
 
@@ -19,38 +19,68 @@ if not os.path.isdir(LOG_PATH):
 if not os.path.isdir(MODEL_PATH[:MODEL_PATH.rindex("\\")]):
     pathlib.Path(MODEL_PATH[:MODEL_PATH.rindex("\\")]).mkdir(exist_ok=True, parents=True)
 
-model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=LOG_PATH)
-#model = PPO.load(MODEL_PATH, env=env)
+
+# model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=LOG_PATH)
+model = PPO.load(MODEL_PATH, env=env, learn_rate=0.1)
+
+
+class CustomCallback(BaseCallback):
+    def __init__(self, verbose=0):
+        super(CustomCallback, self).__init__(verbose)
+        self.lr = 0.00001
+
+    def _on_training_start(self) -> None:
+        pass
+
+    def _on_rollout_start(self) -> None:
+        self.lr -= self.lr / 100
+        self.model.learning_rate = self.lr
+        print(self.model.learning_rate)
+
+    def _on_step(self) -> bool:
+        pass
+
+    def _on_rollout_end(self) -> None:
+        pass
+
+    def _on_training_end(self) -> None:
+        pass
 
 
 def test_model():
+    best_score = [-100, -1]
     for episode in range(EPISODES):
         obs = env.reset()
         done = False
         score = 0
+        frames = 0
 
         while not done:
             env.render()
             action, _ = model.predict(obs)
             obs, reward, done, info = env.step(action)
-            score += reward + 1
-        print(f"Episode: {episode}; Score: {score}")
+            score += reward
+            frames += 1
+        result = score / frames
+        if result > best_score[0]:
+            best_score = [result, episode]
+        print(f"Episode: {episode}; average Score: {result}")
+    print(f"Best Score: {best_score[0]} at episode: {best_score[1]}")
 
 
 def train():
-    reduce_lr = 0.1
-    model.learning_rate(0.1)
-    for i in range(100):
+    callback = CustomCallback()
+    for i in range(10):
         print(i)
-        if i % 10 == 0:
-            reduce_lr /= 10
-        model.learning_rate(model.learning_rate - reduce_lr)
-        model.learn(total_timesteps=TOTAL_TIMESTEPS/100)
+        model.learn(
+            total_timesteps=TOTAL_TIMESTEPS/10,
+            callback=callback
+        )
         model.save(MODEL_PATH)
 
 
 def main():
-    train()
+    test_model()
     env.close()
 
 
